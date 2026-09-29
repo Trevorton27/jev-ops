@@ -1,12 +1,13 @@
 from __future__ import annotations
 
 import uuid
+from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
-from typing import AsyncIterator
 
 import structlog
 from fastapi import FastAPI, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import RedirectResponse
 
 from jevops.config import Settings, get_settings
 from jevops.observability import setup_logging, setup_tracing
@@ -34,8 +35,20 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         debug=settings.debug,
     )
 
-    app.state.settings = settings
+    from jevops.database.engine import create_session_factory
 
+    app.state.settings = settings
+    app.state.session_factory = create_session_factory(settings)
+
+    from jevops.api.middleware import (
+        RateLimitMiddleware,
+        RequestSizeLimitMiddleware,
+        SecureHeadersMiddleware,
+    )
+
+    app.add_middleware(SecureHeadersMiddleware)
+    app.add_middleware(RateLimitMiddleware, requests_per_minute=settings.security.rate_limit_per_minute)
+    app.add_middleware(RequestSizeLimitMiddleware, max_size=settings.security.max_request_size_bytes)
     app.add_middleware(
         CORSMiddleware,
         allow_origins=settings.security.cors_origins,
@@ -53,11 +66,16 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         response.headers["X-Correlation-ID"] = correlation_id
         return response
 
+    @app.get("/", include_in_schema=False)
+    async def root():
+        return RedirectResponse(url="/docs")
+
     @app.get("/health")
     async def health() -> dict[str, str]:
         return {"status": "ok"}
 
     from jevops.api.v1.router import v1_router
+
     app.include_router(v1_router, prefix="/v1")
 
     return app

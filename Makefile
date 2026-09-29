@@ -1,4 +1,4 @@
-.PHONY: dev test lint format migrate up down install
+.PHONY: dev test lint format migrate up down install seed worker up-prod
 
 install:
 	cd apps/api && uv sync --all-extras
@@ -20,8 +20,17 @@ format:
 migrate:
 	cd apps/api && uv run alembic upgrade head
 
+seed:
+	cd apps/api && uv run python -m jevops.database.seed
+
+worker:
+	cd apps/api && uv run celery -A jevops.workers.celery_app:celery_app worker -l info
+
 up:
 	docker compose up -d
 
 down:
 	docker compose down
+
+up-prod:
+	docker compose --profile production up -d

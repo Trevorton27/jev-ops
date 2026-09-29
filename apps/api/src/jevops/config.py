@@ -8,7 +8,7 @@ class DatabaseSettings(BaseSettings):
     model_config = SettingsConfigDict(env_prefix="JEVOPS_DB_")
 
     host: str = "localhost"
-    port: int = 5432
+    port: int = 5433
     user: str = "jevops"
     password: str = "jevops"
     name: str = "jevops"

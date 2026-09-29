@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+
 import structlog
 
 from jevops.config import Settings
