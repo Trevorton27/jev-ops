@@ -28,6 +28,73 @@ make format    # Auto-format code
 make test      # Run tests
 ```
 
+## Architecture
+
+```
+                         ┌──────────────────────┐
+                         │       Vercel          │
+                         │   Next.js Web Console │
+                         │   (Operations UI)     │
+                         └──────────┬────────────┘
+                                    │
+                          NEXT_PUBLIC_API_URL
+                            (HTTPS requests)
+                                    │
+                                    ▼
+┌───────────────────────────────────────────────────────┐
+│                      Railway                          │
+│                                                       │
+│   ┌───────────────────┐      ┌──────────────────┐    │
+│   │   API Service      │      │  Worker Service   │    │
+│   │   (FastAPI)        │      │  (Celery)         │    │
+│   │                    │      │                   │    │
+│   │ - Decision engine  │      │ - Async tasks     │    │
+│   │ - Policy eval      │ ───▶ │ - Drift detection │    │
+│   │ - REST API         │ task │ - Replay runs     │    │
+│   │ - Alembic migrate  │ queue│                   │    │
+│   └────────┬───────────┘      └─────────┬─────────┘    │
+│            │                            │              │
+└────────────┼────────────────────────────┼──────────────┘
+             │                            │
+        ┌────┴────┐                 ┌─────┴─────┐
+        │  Neon   │                 │  Upstash  │
+        │Postgres │                 │   Redis   │
+        │         │                 │           │
+        │ - Orgs  │                 │ - Celery  │
+        │ - Agents│                 │   broker  │
+        │ - Deci- │                 │ - Result  │
+        │   sions │                 │   backend │
+        │ - Poli- │                 │ - Rate    │
+        │   cies  │                 │   limits  │
+        └─────────┘                 └───────────┘
+
+                    ┌───────────────┐
+                    │  AI Agent     │
+                    │  (Your App)   │
+                    └───────┬───────┘
+                            │
+                   POST /v1/decisions
+                   X-API-Key header
+                            │
+                            ▼
+                    ┌───────────────┐
+                    │  JevOps API   │
+                    │  (Railway)    │
+                    └───────────────┘
+                            │
+                    Evaluate action via
+                    Jev model + policies
+                            │
+                            ▼
+                 ┌─────────────────────┐
+                 │  ALLOW | RETRY |    │
+                 │  HUMAN_REVIEW |     │
+                 │  BLOCK              │
+                 └─────────────────────┘
+```
+
+**Request flow:** An AI agent sends a proposed action to the JevOps API on Railway. The API evaluates it using the Jev model (TypeSafe AI) for semantic judgment, then applies deterministic policy rules, and returns a disposition. The Celery worker on Railway handles async tasks like drift detection and replay runs, using Upstash Redis as the message broker. The Next.js console on Vercel provides a UI for reviewing decisions, managing policies, and monitoring agents.
+
 ## Project Structure
 
 ```

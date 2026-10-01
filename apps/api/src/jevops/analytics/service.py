@@ -15,9 +15,27 @@ class AnalyticsService:
         self.session = session
 
     async def get_overview(self, org_id: uuid.UUID) -> dict[str, Any]:
+        from datetime import datetime, timedelta
+
+        now = datetime.utcnow()
+        today_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
+        week_start = today_start - timedelta(days=today_start.weekday())
+
         # Total decisions
         total = await self.session.execute(select(func.count(Decision.id)).where(Decision.org_id == org_id))
         total_count = total.scalar() or 0
+
+        # Decisions today
+        today_result = await self.session.execute(
+            select(func.count(Decision.id)).where(Decision.org_id == org_id, Decision.created_at >= today_start)
+        )
+        decisions_today = today_result.scalar() or 0
+
+        # Decisions this week
+        week_result = await self.session.execute(
+            select(func.count(Decision.id)).where(Decision.org_id == org_id, Decision.created_at >= week_start)
+        )
+        decisions_this_week = week_result.scalar() or 0
 
         # Disposition breakdown
         disposition_query = await self.session.execute(
@@ -25,14 +43,14 @@ class AnalyticsService:
             .where(Decision.org_id == org_id)
             .group_by(Decision.disposition)
         )
-        dispositions = {row[0]: row[1] for row in disposition_query.all()}
+        disposition_breakdown = {row[0]: row[1] for row in disposition_query.all()}
 
-        # Avg latency
+        # Latency stats
         latency_query = await self.session.execute(
             select(
                 func.avg(Decision.provider_latency_ms),
-                func.percentile_cont(0.5).within_group(Decision.provider_latency_ms),
                 func.percentile_cont(0.95).within_group(Decision.provider_latency_ms),
+                func.percentile_cont(0.99).within_group(Decision.provider_latency_ms),
             ).where(Decision.org_id == org_id, Decision.provider_latency_ms.is_not(None))
         )
         latency_row = latency_query.one_or_none()
@@ -44,12 +62,12 @@ class AnalyticsService:
 
         return {
             "total_decisions": total_count,
-            "dispositions": dispositions,
-            "latency": {
-                "avg_ms": round(float(latency_row[0] or 0), 2) if latency_row else 0,
-                "p50_ms": round(float(latency_row[1] or 0), 2) if latency_row else 0,
-                "p95_ms": round(float(latency_row[2] or 0), 2) if latency_row else 0,
-            },
+            "decisions_today": decisions_today,
+            "decisions_this_week": decisions_this_week,
+            "disposition_breakdown": disposition_breakdown,
+            "avg_latency_ms": round(float(latency_row[0] or 0), 2) if latency_row else 0,
+            "p95_latency_ms": round(float(latency_row[1] or 0), 2) if latency_row else 0,
+            "p99_latency_ms": round(float(latency_row[2] or 0), 2) if latency_row else 0,
             "pending_reviews": pending.scalar() or 0,
         }
 

@@ -4,12 +4,16 @@ from alembic import context
 from sqlalchemy import engine_from_config, pool
 
 import jevops.models  # noqa: F401 — ensure all models are imported
+from jevops.config import get_settings
 from jevops.database.base import Base
 
 config = context.config
 
 if config.config_file_name is not None:
     fileConfig(config.config_file_name)
+
+# Override sqlalchemy.url with the app's config (reads env vars)
+config.set_main_option("sqlalchemy.url", get_settings().db.sync_url)
 
 target_metadata = Base.metadata
 

@@ -28,6 +28,12 @@ async def reset_demo(db: AsyncSession = Depends(get_db)):
         Review,
     )
 
+    from sqlalchemy import delete, update
+
+    # Break circular FK: policies.active_version_id -> policy_versions
+    await db.execute(update(Policy).values(active_version_id=None))
+    await db.flush()
+
     for model in [
         AuditEvent,
         DecisionOutcome,
@@ -42,8 +48,6 @@ async def reset_demo(db: AsyncSession = Depends(get_db)):
         Project,
         Organization,
     ]:
-        from sqlalchemy import delete
-
         await db.execute(delete(model))
     await db.commit()
 

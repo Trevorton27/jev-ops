@@ -12,14 +12,23 @@ class DatabaseSettings(BaseSettings):
     user: str = "jevops"
     password: str = "jevops"
     name: str = "jevops"
+    sslmode: str = ""
+
+    @property
+    def _requires_ssl(self) -> bool:
+        if self.sslmode:
+            return self.sslmode != "disable"
+        return self.host != "localhost"
 
     @property
     def async_url(self) -> str:
-        return f"postgresql+asyncpg://{self.user}:{self.password}@{self.host}:{self.port}/{self.name}"
+        base = f"postgresql+asyncpg://{self.user}:{self.password}@{self.host}:{self.port}/{self.name}"
+        return f"{base}?ssl=require" if self._requires_ssl else base
 
     @property
     def sync_url(self) -> str:
-        return f"postgresql+psycopg2://{self.user}:{self.password}@{self.host}:{self.port}/{self.name}"
+        base = f"postgresql+psycopg2://{self.user}:{self.password}@{self.host}:{self.port}/{self.name}"
+        return f"{base}?sslmode=require" if self._requires_ssl else base
 
 
 class RedisSettings(BaseSettings):
@@ -27,11 +36,15 @@ class RedisSettings(BaseSettings):
 
     host: str = "localhost"
     port: int = 6379
+    password: str = ""
+    ssl: bool = False
     db: int = 0
 
     @property
     def url(self) -> str:
-        return f"redis://{self.host}:{self.port}/{self.db}"
+        scheme = "rediss" if self.ssl else "redis"
+        auth = f"default:{self.password}@" if self.password else ""
+        return f"{scheme}://{auth}{self.host}:{self.port}/{self.db}"
 
 
 class JevSettings(BaseSettings):
